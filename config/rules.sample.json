@@ -1,0 +1,33 @@
+{
+  "allowedExtensions": [".pdf", ".xlsx", ".csv"],
+  "blockedExtensions": [".exe", ".bat"],
+  "maxFileSizeMB": 50,
+  "senderAllowList": ["@example.co.jp"],
+  "senderBlockList": ["spam@"],
+  "folderRules": [
+    {
+      "name": "INBOX__MOVE__example",
+      "mailbox": "INBOX",
+      "targetImapFolder": "INBOX.00_example",
+      "targetLocalSubpath": "01_IN/00_example",
+      "domainFolderMap": {
+        "example.com": "Example"
+      },
+      "conditions": {
+        "recipientEquals": "user@example.com"
+      }
+    },
+    {
+      "name": "INBOX.Sent__MOVE__example",
+      "mailbox": "INBOX.Sent",
+      "targetImapFolder": "INBOX.00_example",
+      "targetLocalSubpath": "02_OUT",
+      "domainFolderMap": {
+        "example.com": "Example"
+      },
+      "conditions": {
+        "recipientDomain": ["example.com"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.env
+
+# Local mail backup and logs
+mail-backups/
+logs/
+
+# Ignore build/log output in src (for future-proofing)
+src/**/dist/
+src/**/logs/
+
+# Compiled output
+*.log
+*.jsonl
+
+# System/IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Sensitive config (if any)
+config/config.json
+config/rules.json
+
+# Ignore test output
+coverage/
+*.test.ts.snap
