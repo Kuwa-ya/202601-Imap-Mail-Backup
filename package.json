@@ -5,11 +5,10 @@
   "type": "commonjs",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "npm run build && node ./dist/cli/processRules.js",
-    "check-mailboxes:ts": "ts-node ./src/cli/checkMailboxes.ts",
-    "process-rules:ts": "ts-node ./src/cli/processRules.ts",
-    "check-mailboxes:js": "node ./dist/cli/checkMailboxes.js",
-    "process-rules:js": "node ./dist/cli/processRules.js",
+    "start": "npm run build && node ./dist/main.js",
+    "start:ts": "ts-node ./src/main.ts",
+    "check-mailboxes:js": "npm run build && node ./dist/checkMailboxes.js",
+    "check-mailboxes:ts": "ts-node ./src/checkMailboxes.ts",
     "task:create": "powershell -ExecutionPolicy Bypass -File ./scripts/create-task.ps1",
     "task:delete": "powershell -ExecutionPolicy Bypass -File ./scripts/delete-task.ps1"
   },

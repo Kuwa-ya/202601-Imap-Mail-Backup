@@ -10,8 +10,8 @@ function appendErrorLog(message: string) {
 import path from 'path';
 import Imap from 'node-imap';
 import { simpleParser, Attachment as MailParserAttachment } from 'mailparser';
-import { saveMessage } from '../storage/saveToLocal';
-import { shouldSaveAttachment } from '../filter/attachmentFilter';
+import { saveMessage } from './saveToLocal';
+import { shouldSaveAttachment } from './attachmentFilter';
 
 function readConfig() {
 	const cfgPath = path.resolve(process.cwd(), 'config', 'config.json');
