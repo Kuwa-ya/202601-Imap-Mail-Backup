@@ -86,28 +86,20 @@ export async function saveMessage(
 
 	// 保存先パスに domainFolder を追加
 	const root = path.join(backupBase, localSubpath || '', domainFolder, datePath + '_' + folderName);
-	console.log('[saveToLocal] ensureDir:', root);
-	await ensureDir(root);
-
 	// --- 重複保存チェック ---
-	// フォルダ内のファイル名で重複判定（messageId + 添付ファイル名 or subject）
-	let uniqueKey = "";
-	if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
-		uniqueKey = sanitizeFilename(msg.attachments[0].filename || 'attachment') + '_' + idPart;
-	} else {
-		uniqueKey = '___NO_ATTACHMENT___' + (msg.subject ? sanitizeFilename(msg.subject).slice(0, 50) : 'no_title') + '_'  + idPart;
-	}
-	const folderPath = path.join(root, uniqueKey);
+	// rootディレクトリ自体の存在で重複判定
 	try {
-		const stat = await fs.promises.stat(folderPath);
+		const stat = await fs.promises.stat(root);
 		if (stat.isDirectory()) {
-			console.log(`[saveToLocal] skip: already exists folder for key=${uniqueKey}`);
+			console.log(`[saveToLocal] skip: already exists folder for key=${root}`);
 			return [];
 		}
 	} catch (err) {
 		// フォルダが存在しなければ何もしない
 	}
 	// --- 重複保存チェックここまで ---
+	console.log('[saveToLocal] ensureDir:', root);
+	await ensureDir(root);
 
 	const subjPart = msg.subject ? sanitizeFilename(msg.subject).slice(0, 100) : 'message';
 

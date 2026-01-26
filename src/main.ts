@@ -61,6 +61,16 @@ function matchConditions(envelope: any, conditions: any) {
 		}
 	}
 
+	// senderEquals: from で一致判定
+	if (conditions.senderEquals) {
+		const froms = addressesToStrings(envelope.from).map(s => s.toLowerCase());
+		if (froms.includes(conditions.senderEquals.toLowerCase())) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+
 	// recipientDomain: to, cc, bcc でドメイン一致判定
 	if (conditions.recipientDomain) {
 		const tos = addressesToStrings(envelope.to).map(s => s.toLowerCase());
