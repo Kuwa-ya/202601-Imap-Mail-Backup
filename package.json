@@ -10,7 +10,9 @@
     "check-mailboxes:js": "npm run build && node ./dist/checkMailboxes.js",
     "check-mailboxes:ts": "ts-node ./src/checkMailboxes.ts",
     "task:create": "powershell -ExecutionPolicy Bypass -File ./scripts/create-task.ps1",
-    "task:delete": "powershell -ExecutionPolicy Bypass -File ./scripts/delete-task.ps1"
+    "task:delete": "powershell -ExecutionPolicy Bypass -File ./scripts/delete-task.ps1",
+    "task:info": "powershell -Command \"Get-ScheduledTask -TaskName 'ImapMailBackupTask' | Get-ScheduledTaskInfo | Format-List\"",
+    "open:backups": "powershell -Command \"Start-Process explorer.exe '.\\mail-backups'\""
   },
   "dependencies": {
     "imapflow": "latest",

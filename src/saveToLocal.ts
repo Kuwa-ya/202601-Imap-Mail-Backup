@@ -97,11 +97,15 @@ export async function saveMessage(
 	} else {
 		uniqueKey = '___NO_ATTACHMENT___' + (msg.subject ? sanitizeFilename(msg.subject).slice(0, 50) : 'no_title') + '_'  + idPart;
 	}
-	const files = await fs.promises.readdir(root);
-	const exists = files.some(f => f.includes(uniqueKey));
-	if (exists) {
-		console.log(`[saveToLocal] skip: already exists for key=${uniqueKey}`);
-		return [];
+	const folderPath = path.join(root, uniqueKey);
+	try {
+		const stat = await fs.promises.stat(folderPath);
+		if (stat.isDirectory()) {
+			console.log(`[saveToLocal] skip: already exists folder for key=${uniqueKey}`);
+			return [];
+		}
+	} catch (err) {
+		// フォルダが存在しなければ何もしない
 	}
 	// --- 重複保存チェックここまで ---
 

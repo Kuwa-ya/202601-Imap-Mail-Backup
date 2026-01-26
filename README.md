@@ -125,7 +125,7 @@ PowerShellスクリプトによるWindowsタスクスケジューラ登録・削
 PowerShellで下記コマンドを実行すると、タスクの状態・最終実行時刻・次回実行予定などが確認できます。
 
 ```powershell
-Get-ScheduledTask -TaskName "MailProcessorTask" | Get-ScheduledTaskInfo | Format-List
+Get-ScheduledTask -TaskName "ImapMailBackupTask" | Get-ScheduledTaskInfo | Format-List
 ```
 
 ---
