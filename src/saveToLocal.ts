@@ -27,6 +27,9 @@ export type MessageRecord = {
 	messageId?: string;
 	subject?: string;
 	from?: string;
+	to?: string;
+	cc?: string;
+	bcc?: string;
 	date?: string;
 	headers?: Record<string, string>;
 	body?: string;
@@ -39,7 +42,8 @@ export async function saveMessage(
 	backupBase: string,
 	localSubpath: string,
 	msg: MessageRecord,
-	domainFolderMap?: Record<string, string>
+	domainFolderMap?: Record<string, string>,
+	mailboxType: 'inbox' | 'sent' = 'inbox'
 ): Promise<string[]> {
 	const out: string[] = [];
 	const now = new Date();
@@ -61,18 +65,50 @@ export async function saveMessage(
 	const d = String(dateObj.getDate()).padStart(2, '0');
 	const datePath = y + m + d;
 
-	// 送信者ドメイン抽出
-	let senderDomain = 'unknown';
-	if (msg.from) {
-		const match = msg.from.match(/@([\w.-]+)/);
-		if (match) senderDomain = match[1].toLowerCase();
-	}
-	let domainFolder = senderDomain;
-	// domainFolderMapでマッピングがあればそれを使い、なければドメイン名そのまま
-	if (domainFolderMap && domainFolderMap[senderDomain]) {
-		domainFolder = domainFolderMap[senderDomain];
+	// ドメイン抽出（受信メールは送信者、送信メールは受信者）
+	let domainFolder = 'unknown';
+	
+	if (mailboxType === 'sent') {
+		// 送信メール: 受信者（to/cc/bcc）のドメインで分類
+		const recipients: string[] = [];
+		if (msg.to) recipients.push(msg.to);
+		if (msg.cc) recipients.push(msg.cc);
+		if (msg.bcc) recipients.push(msg.bcc);
+		
+		// 受信者アドレスからドメインを抽出
+		const recipientDomains: string[] = [];
+		for (const recipient of recipients) {
+			// カンマ区切りの複数アドレスに対応
+			const addresses = recipient.split(',').map(a => a.trim());
+			for (const addr of addresses) {
+				const match = addr.match(/@([\w.-]+)/);
+				if (match) {
+					recipientDomains.push(match[1].toLowerCase());
+				}
+			}
+		}
+		
+		// 最初に見つかった受信者ドメインを使用（複数ある場合は最初のもの）
+		if (recipientDomains.length > 0) {
+			const recipientDomain = recipientDomains[0];
+			if (domainFolderMap && domainFolderMap[recipientDomain]) {
+				domainFolder = domainFolderMap[recipientDomain];
+			} else {
+				domainFolder = recipientDomain;
+			}
+		}
 	} else {
-		domainFolder = senderDomain;
+		// 受信メール: 送信者のドメインで分類（従来通り）
+		let senderDomain = 'unknown';
+		if (msg.from) {
+			const match = msg.from.match(/@([\w.-]+)/);
+			if (match) senderDomain = match[1].toLowerCase();
+		}
+		if (domainFolderMap && domainFolderMap[senderDomain]) {
+			domainFolder = domainFolderMap[senderDomain];
+		} else {
+			domainFolder = senderDomain;
+		}
 	}
 
 	// 添付ファイル名 or メールタイトル + メッセージID
@@ -85,6 +121,10 @@ export async function saveMessage(
 	}
 
 	// 保存先パスに domainFolder を追加
+	// localSubpathが絶対パスの場合、backupBaseが無視されるため警告
+	if (localSubpath && path.isAbsolute(localSubpath)) {
+		console.warn(`[saveToLocal] WARNING: targetLocalSubpath is an absolute path (${localSubpath}). backupBase (${backupBase}) will be ignored.`);
+	}
 	const root = path.join(backupBase, localSubpath || '', domainFolder, datePath + '_' + folderName);
 	// --- 重複保存チェック ---
 	// rootディレクトリ自体の存在で重複判定

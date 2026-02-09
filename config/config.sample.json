@@ -6,14 +6,8 @@
     "user": "user@example.com",
     "password": "********"
   },
-  "mailbox": "INBOX",
-  "sentMailbox": "INBOX.Sent",
-  "processedFolder": "Processed_By_Node",
-  "backupBase": "C:/mail-backups",
-  "saveMode": "body+attachments",
-  "verbose": true,
-  "sinceMinutes": 1440,
-  "maxParallelAttachments": 3,
-  "useImapMove": true,
-  "localSaveBySenderDomain": true
+  "logging": {
+    "maxLogSizeMB": 10,
+    "retentionDays": 30
+  }
 }

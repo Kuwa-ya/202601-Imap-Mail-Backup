@@ -5,14 +5,22 @@
   "type": "commonjs",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "npm run build && node ./dist/main.js",
-    "start:ts": "ts-node ./src/main.ts",
-    "check-mailboxes:js": "npm run build && node ./dist/checkMailboxes.js",
-    "check-mailboxes:ts": "ts-node ./src/checkMailboxes.ts",
+
+    "start": "node ./dist/main.js",
+    "check-mailboxes": "node ./dist/checkMailboxes.js",
+    "open-backups": "node ./dist/openBackups.js",
+
+    "start:dev": "ts-node ./src/main.ts",
+    "check-mailboxes:dev": "ts-node ./src/checkMailboxes.ts",
+    "open-backups:dev": "ts-node ./src/openBackups.ts",
+
+    "start:build": "npm run build && npm run start",
+    "check-mailboxes:build": "npm run build && npm run check-mailboxes",
+    "open-backups:build": "npm run build && npm run open-backups",
+
     "task:create": "powershell -ExecutionPolicy Bypass -File ./scripts/create-task.ps1",
     "task:delete": "powershell -ExecutionPolicy Bypass -File ./scripts/delete-task.ps1",
-    "task:info": "powershell -Command \"Get-ScheduledTask -TaskName 'ImapMailBackupTask' | Get-ScheduledTaskInfo | Format-List\"",
-    "open:backups": "powershell -Command \"Start-Process explorer.exe '.\\mail-backups'\""
+    "task:info": "powershell -Command \"Get-ScheduledTask -TaskName 'ImapMailBackupTask' | Get-ScheduledTaskInfo | Format-List\""
   },
   "dependencies": {
     "imapflow": "latest",

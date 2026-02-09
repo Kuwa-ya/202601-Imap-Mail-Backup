@@ -1,18 +1,25 @@
 {
-  "allowedExtensions": [".pdf", ".xlsx", ".csv"],
+  "allowedExtensions": [".pdf", ".xlsx", ".csv", ".zip"],
   "blockedExtensions": [".exe", ".bat"],
-  "maxFileSizeMB": 50,
   "senderAllowList": ["@example.co.jp"],
   "senderBlockList": ["spam@"],
+
+  "saveMode": "body+attachments",
+  "maxFileSizeMB": 50,
+  "sinceMinutes": 1440,
+  "backupBase": "C:/mail-backups",
+
+  "domainFolderMap": {
+    "example.com": "Example",
+    "another-domain.com": "AnotherDomain"
+  },
+
   "folderRules": [
     {
       "name": "INBOX__MOVE__example",
       "mailbox": "INBOX",
       "targetImapFolder": "INBOX.00_example",
       "targetLocalSubpath": "01_IN/00_example",
-      "domainFolderMap": {
-        "example.com": "Example"
-      },
       "conditions": {
         "recipientEquals": "user@example.com"
       }
@@ -23,10 +30,9 @@
       "targetImapFolder": "INBOX.00_example",
       "targetLocalSubpath": "02_OUT",
       "domainFolderMap": {
-        "example.com": "Example"
       },
       "conditions": {
-        "recipientDomain": ["example.com"]
+        "recipientEquals": "user@example.com"
       }
     }
   ]

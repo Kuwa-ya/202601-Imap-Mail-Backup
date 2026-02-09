@@ -9,6 +9,12 @@ function readConfig() {
 	return JSON.parse(raw);
 }
 
+function readRules() {
+	const p = path.resolve(process.cwd(), 'config', 'rules.json');
+	if (!fs.existsSync(p)) throw new Error(`rules.json not found at ${p}`);
+	return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+
 (async () => {
 	try {
 		console.log('[checkMailboxes] Start');
@@ -45,6 +51,7 @@ function readConfig() {
 		imap.once('ready', async () => {
 			try {
 				console.log('[checkMailboxes] IMAP ready');
+				const rules = readRules();
 				const boxes = await getBoxesAsync();
 				// Flatten mailbox paths
 				function flattenBoxes(boxes: any, prefix = ''): string[] {
@@ -61,9 +68,16 @@ function readConfig() {
 				const mailboxPaths = flattenBoxes(boxes);
 				mailboxPaths.forEach(p => console.log('[mailbox]', p));
 
+				// rules.jsonのfolderRulesからmailboxを取得
+				const targets = (rules.folderRules || [])
+					.map((rule: any) => rule.mailbox)
+					.filter(Boolean) as string[];
+				
+				// 重複を除去
+				const uniqueTargets = [...new Set(targets)];
+				
 				const names = mailboxPaths.map((b: string) => b.toLowerCase());
-				const targets = [cfg.mailbox, cfg.sentMailbox].filter(Boolean) as string[];
-				for (const t of targets) {
+				for (const t of uniqueTargets) {
 					const found = names.some((n: string) => n === t.toLowerCase() || n.endsWith('/' + t.toLowerCase()));
 					if (found) {
 						console.log(`[check] ${t}: accessible`);

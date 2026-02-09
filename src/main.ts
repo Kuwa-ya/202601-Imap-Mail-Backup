@@ -1,13 +1,6 @@
 import fs from 'fs';
-// エラーログをlogs/error.logに追記
-function appendErrorLog(message: string) {
-	const logDir = path.resolve(process.cwd(), 'logs');
-	if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-	const logPath = path.join(logDir, 'error.log');
-	const now = new Date().toISOString();
-	fs.appendFileSync(logPath, `[${now}] ${message}\n`, { encoding: 'utf8' });
-}
 import path from 'path';
+import { appendErrorLog, appendLatestLog, appendTaskLog, writeLatestLog, rotateTaskLog, setupConsoleToTaskLog, type LogConfig } from './logger';
 import Imap from 'node-imap';
 import { simpleParser, Attachment as MailParserAttachment } from 'mailparser';
 import { saveMessage } from './saveToLocal';
@@ -71,29 +64,39 @@ function matchConditions(envelope: any, conditions: any) {
 		}
 	}
 
-	// recipientDomain: to, cc, bcc でドメイン一致判定
-	if (conditions.recipientDomain) {
-		const tos = addressesToStrings(envelope.to).map(s => s.toLowerCase());
-		const ccs = addressesToStrings(envelope.cc).map(s => s.toLowerCase());
-		const bccs = addressesToStrings(envelope.bcc).map(s => s.toLowerCase());
-		const allRecipients = [...tos, ...ccs, ...bccs];
-		const ok = allRecipients.some((t: string) => conditions.recipientDomain.some((d: string) => t.endsWith(d.toLowerCase())));
-		if (ok) {
-			return true;
-		} else {
-			return false;
-		}
-	}
 	return false;
+}
+
+// メールボックス名から送信/受信を判定（表記ゆれに対応）
+function determineMailboxType(mailboxName: string): 'inbox' | 'sent' {
+	const lowerName = mailboxName.toLowerCase();
+	// "sent"を含むメールボックス名を送信フォルダと判定
+	if (lowerName.includes('sent')) {
+		return 'sent';
+	}
+	return 'inbox';
 }
 
 
 // node-imapベースの新しいメイン処理
 (async () => {
 	try {
-		console.log('processRules: start');
 		const cfg = readConfig();
 		const rules = readRules();
+		const logConfig: LogConfig = cfg.logging || {};
+		
+		// task.logのローテーションを実行（logger.tsで管理）
+		rotateTaskLog(logConfig);
+		
+		// 標準出力をtask.logにも記録するように設定
+		setupConsoleToTaskLog(logConfig);
+		
+		// 実行開始時刻を記録
+		appendTaskLog('Start', logConfig);
+		
+		console.log('processRules: start');
+		// 最新実行ログを開始
+		writeLatestLog('processRules: start', logConfig);
 		const imap = new Imap({
 			user: cfg.imap.user,
 			password: cfg.imap.password,
@@ -142,9 +145,11 @@ function matchConditions(envelope: any, conditions: any) {
 		imap.connect();
 		await new Promise((resolve, reject) => imap.once('ready', resolve));
 		console.log('IMAP connection ready');
+		appendLatestLog('IMAP connection ready', logConfig);
 
 		for (const rule of rules.folderRules || []) {
 			console.log(`Processing rule: ${rule.name} on mailbox ${rule.mailbox}`);
+			appendLatestLog(`Processing rule: ${rule.name} on mailbox ${rule.mailbox}`, logConfig);
 			await openBoxAsync(rule.mailbox, false);
 			const uids = await searchAsync(['ALL']);
 			let scanned = 0, matched = 0;
@@ -156,8 +161,10 @@ function matchConditions(envelope: any, conditions: any) {
 				const parsed = await simpleParser(msg.body);
 				const env = parsed;
 				const date = parsed.date ? new Date(parsed.date) : null;
-				if (cfg.sinceMinutes && date) {
-					const cutoff = Date.now() - cfg.sinceMinutes * 60 * 1000;
+				// sinceMinutes: ルール個別設定があればそれを使用、なければ共通設定から
+				const sinceMinutes = rule.sinceMinutes !== undefined ? rule.sinceMinutes : rules.sinceMinutes;
+				if (sinceMinutes && date) {
+					const cutoff = Date.now() - sinceMinutes * 60 * 1000;
 					if (date.getTime() < cutoff) {
 						continue;
 					}
@@ -183,10 +190,20 @@ function matchConditions(envelope: any, conditions: any) {
 							if (keep) attachments.push({ filename: a.filename || 'attachment', content: contentBuf });
 						}
 					}
+					// メールボックス種別を判定（保存先分類で使用）
+					const mailboxType = determineMailboxType(rule.mailbox);
+					// to/cc/bccを文字列に変換
+					const toStr = parsed.to ? addressesToStrings(parsed.to).join(', ') : undefined;
+					const ccStr = parsed.cc ? addressesToStrings(parsed.cc).join(', ') : undefined;
+					const bccStr = parsed.bcc ? addressesToStrings(parsed.bcc).join(', ') : undefined;
+					
 					const msgRec = {
 						messageId: parsed.messageId,
 						subject: parsed.subject,
 						from: parsed.from ? parsed.from.text : undefined,
+						to: toStr,
+						cc: ccStr,
+						bcc: bccStr,
 						date: parsed.date ? parsed.date.toISOString() : undefined,
 						headers: parsed.headers ? Object.fromEntries(parsed.headers as any) : undefined,
 						body: parsed.text || parsed.html || undefined,
@@ -195,20 +212,36 @@ function matchConditions(envelope: any, conditions: any) {
 					};
 					let saved = [];
 					try {
-						// domainFolderMapをruleごとに渡す
+						// domainFolderMap: 個別設定が明示的に指定されている場合はそれを使用（空でも）、
+						// 未指定の場合は共通設定を使用
+						const domainFolderMap = rule.domainFolderMap !== undefined
+							? rule.domainFolderMap
+							: rules.domainFolderMap;
+						
+						// backupBase: 個別設定があればそれを使用、なければ共通設定から
+						const backupBase = rule.backupBase || rules.backupBase;
+						if (!backupBase) {
+							throw new Error(`backupBase is not configured. Please set it in rules.json (globally or in rule "${rule.name}")`);
+						}
+						
+						// saveMode: ルール個別設定があればそれを使用、なければ共通設定から
+						const saveMode = rule.saveMode || rules.saveMode || 'attachments';
+						
 						saved = await saveMessage(
-							cfg.saveMode || 'attachments',
-							cfg.backupBase,
+							saveMode,
+							backupBase,
 							rule.targetLocalSubpath || '',
 							msgRec,
-							rule.domainFolderMap
+							domainFolderMap && Object.keys(domainFolderMap).length > 0 ? domainFolderMap : undefined,
+							mailboxType
 						);
 						if (saved && saved.length) console.log(`   saved ${saved.length} files for uid=${uid}`);
 						else console.log(`   saveMessage: already saved for uid=${uid}`);
 					} catch (e) {
 						const errMsg = e instanceof Error ? e.message : String(e);
 						console.error('   saveMessage failed:', errMsg);
-						appendErrorLog(`saveMessage failed: ${errMsg}`);
+						appendErrorLog(`saveMessage failed: ${errMsg}`, logConfig);
+						appendLatestLog(`   ERROR: saveMessage failed: ${errMsg}`, logConfig);
 					}
 					// メール移動
 					if (rule.targetImapFolder && rule.mailbox !== rule.targetImapFolder) {
@@ -222,7 +255,8 @@ function matchConditions(envelope: any, conditions: any) {
 						} catch (err) {
 							const errMsg = err instanceof Error ? err.message : String(err);
 							console.error(`   move failed for uid=${uid}:`, errMsg);
-							appendErrorLog(`move failed for uid=${uid}: ${errMsg}`);
+							appendErrorLog(`move failed for uid=${uid}: ${errMsg}`, logConfig);
+							appendLatestLog(`   ERROR: move failed for uid=${uid}: ${errMsg}`, logConfig);
 						}
 					} else if (rule.targetImapFolder && rule.mailbox === rule.targetImapFolder) {
 						console.log(`   skip move: mailbox and targetImapFolder are the same (${rule.mailbox})`);
@@ -230,13 +264,20 @@ function matchConditions(envelope: any, conditions: any) {
 				}
 			}
 			console.log(`  scanned=${scanned} matched=${matched}`);
+			appendLatestLog(`  scanned=${scanned} matched=${matched}`, logConfig);
 		}
 		imap.end();
 		console.log('processRules: finished');
+		appendTaskLog('End', logConfig);
+		appendLatestLog('processRules: finished', logConfig);
 	} catch (err) {
 		const errMsg = err instanceof Error ? err.message : String(err);
 		console.error('Processing failed:', errMsg);
-		appendErrorLog(`Processing failed: ${errMsg}`);
+		const cfg = readConfig();
+		const logConfig: LogConfig = cfg.logging || {};
+		appendTaskLog(`Error: ${errMsg}`, logConfig);
+		appendErrorLog(`Processing failed: ${errMsg}`, logConfig);
+		appendLatestLog(`ERROR: Processing failed: ${errMsg}`, logConfig);
 		process.exit(2);
 	}
 })();
