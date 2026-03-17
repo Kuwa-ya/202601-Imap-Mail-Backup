@@ -22,7 +22,15 @@ function addressesToStrings(addrs: any): string[] {
 	if (!addrs) return [];
 	// mailparser AddressObject形式
 	if (Array.isArray(addrs)) {
-		return addrs.map(a => a.address ? a.address : String(a));
+		return addrs.map((a: any) => {
+			if (a && typeof a === 'object') {
+				if (a.address) return a.address;
+				// IMAP ENVELOPE形式: [phrase, adl, mailbox, host] または { mailbox, host }
+				if (a.mailbox != null && a.host != null) return `${a.mailbox}@${a.host}`;
+				if (Array.isArray(a) && a[2] != null && a[3] != null) return `${a[2]}@${a[3]}`;
+			}
+			return String(a);
+		});
 	}
 	if (typeof addrs === 'object') {
 		if (Array.isArray(addrs.value)) {
@@ -30,6 +38,8 @@ function addressesToStrings(addrs: any): string[] {
 		}
 		if (addrs.address) return [addrs.address];
 		if (addrs.text) return [addrs.text];
+		// IMAP ENVELOPE 単一アドレス
+		if (addrs.mailbox != null && addrs.host != null) return [`${addrs.mailbox}@${addrs.host}`];
 	}
 	if (typeof addrs === 'string') return [addrs];
 	return [String(addrs)];
@@ -43,15 +53,16 @@ function matchConditions(envelope: any, conditions: any) {
 
 	// recipientEquals: to, cc, bcc で一致判定
 	if (conditions.recipientEquals) {
-		const tos = addressesToStrings(envelope.to).map(s => s.toLowerCase());
-		const ccs = addressesToStrings(envelope.cc).map(s => s.toLowerCase());
-		const bccs = addressesToStrings(envelope.bcc).map(s => s.toLowerCase());
+		const tos = addressesToStrings(envelope?.to).map(s => s.toLowerCase());
+		const ccs = addressesToStrings(envelope?.cc).map(s => s.toLowerCase());
+		const bccs = addressesToStrings(envelope?.bcc).map(s => s.toLowerCase());
 		const allRecipients = [...tos, ...ccs, ...bccs];
-		if (allRecipients.includes(conditions.recipientEquals.toLowerCase())) {
-			return true;
-		} else {
-			return false;
+		const target = conditions.recipientEquals.toLowerCase();
+		const matched = allRecipients.includes(target);
+		if (process.env.LOG_ENVELOPE === '1') {
+			console.log(`[matchConditions] recipientEquals=${conditions.recipientEquals} → allRecipients=[${allRecipients.join(', ')}] matched=${matched}`);
 		}
+		return matched;
 	}
 
 	// senderEquals: from で一致判定
@@ -155,11 +166,24 @@ function determineMailboxType(mailboxName: string): 'inbox' | 'sent' {
 			let scanned = 0, matched = 0;
 			for (const uid of uids as number[]) {
 				scanned++;
-				const fetchRes: any[] = await fetchAsync(uid, { bodies: '', struct: true });
+				const fetchRes: any[] = await fetchAsync(uid, { bodies: '', struct: true, envelope: true });
 				const msg = fetchRes[0];
 				if (!msg) continue;
-				const parsed = await simpleParser(msg.body);
-				const env = parsed;
+				// マッチングは IMAP ENVELOPE を優先（サーバー・メーラーと一致。本文パースで cc が抜ける不具合を回避）
+				const env = msg.attrs?.envelope
+					? { to: msg.attrs.envelope.to, cc: msg.attrs.envelope.cc, bcc: msg.attrs.envelope.bcc, from: msg.attrs.envelope.from }
+					: null;
+				// デバッグ: 環境変数 LOG_ENVELOPE=1 で envelope の to/cc/bcc/subject をログ出力
+				if (process.env.LOG_ENVELOPE === '1') {
+					const e = msg.attrs?.envelope;
+					const toStr = e ? addressesToStrings(e.to).join(', ') : '(no envelope)';
+					const ccStr = e ? addressesToStrings(e.cc).join(', ') : '(no envelope)';
+					const bccStr = e ? addressesToStrings(e.bcc).join(', ') : '(no envelope)';
+					const subj = e && typeof e.subject === 'string' ? e.subject : '';
+					console.log(`[envelope] uid=${uid} subject="${subj}" to=[${toStr}] cc=[${ccStr}] bcc=[${bccStr}]`);
+				}
+				const parsed = await simpleParser(msg.body ?? Buffer.alloc(0));
+				const envForMatch = env ?? parsed;
 				const date = parsed.date ? new Date(parsed.date) : null;
 				// sinceMinutes: ルール個別設定があればそれを使用、なければ共通設定から
 				const sinceMinutes = rule.sinceMinutes !== undefined ? rule.sinceMinutes : rules.sinceMinutes;
@@ -169,7 +193,7 @@ function determineMailboxType(mailboxName: string): 'inbox' | 'sent' {
 						continue;
 					}
 				}
-				if (matchConditions(env, rule.conditions)) {
+				if (matchConditions(envForMatch, rule.conditions)) {
 					matched++;
 					console.log(` - match uid=${uid} subject=${parsed.subject || ''}`);
 					// 添付ファイルフィルタ
